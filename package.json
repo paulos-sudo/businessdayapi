@@ -1,0 +1,26 @@
+{
+  "name": "businessdayapi",
+  "version": "0.1.0",
+  "description": "Verified, always-current business day & deadline API — x402-payable",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "node --test test/core.test.mjs",
+    "start": "node src/server.js",
+    "snapshots": "node scripts/generate-snapshots.mjs",
+    "build": "node scripts/generate-snapshots.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@x402/core": "^2.22.0",
+    "@x402/evm": "^2.22.0",
+    "@x402/express": "^2.22.0",
+    "date-holidays": "^3.35.0",
+    "express": "^5.2.1"
+  }
+}
