@@ -13,6 +13,7 @@ import express from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { createFacilitatorConfig } from "@coinbase/x402";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { check, add, between, next, previous, index, ApiError } from "./core.js";
 
@@ -27,7 +28,13 @@ const DISCLAIMER =
 
 const app = express();
 
-const facilitator = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+// With CDP credentials set (production/mainnet), use Coinbase's authenticated
+// facilitator config; otherwise fall back to the plain URL (testnet).
+const facilitatorConfig =
+  process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET
+    ? createFacilitatorConfig(process.env.CDP_API_KEY_ID, process.env.CDP_API_KEY_SECRET)
+    : { url: FACILITATOR_URL };
+const facilitator = new HTTPFacilitatorClient(facilitatorConfig);
 const resourceServer = new x402ResourceServer(facilitator)
   .register(NETWORK, new ExactEvmScheme());
 resourceServer.registerExtension(bazaarResourceServerExtension);
