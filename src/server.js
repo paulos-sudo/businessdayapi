@@ -202,6 +202,131 @@ app.get("/health", (_req, res) =>
   res.json({ status: "ok", dataGeneratedAt: index.generatedAt, source: index.source, years: index.years }),
 );
 
+// OpenAPI 3.1 discovery document (x402scan & friends read this from /openapi.json).
+const QP = (name, desc, required = false, type = "string") => ({
+  name, in: "query", required, description: desc, schema: { type },
+});
+const P_COUNTRY = QP("country", "ISO 3166-1 alpha-2 country code, e.g. DE, US, JP", true);
+const P_REGION = QP("region", "Optional ISO 3166-2 subdivision suffix, e.g. BY (Bavaria), CA (California)");
+const P_WEEKEND = QP("weekend", "Optional weekend override: sat-sun | fri-sat | custom:THU,FRI");
+const PAYMENT_INFO = {
+  price: { mode: "fixed", currency: "USD", amount: "0.001000" },
+  protocols: [{ x402: {} }],
+};
+const R402 = { 402: { description: "Payment Required" } };
+const ok = (props, required) => ({
+  200: {
+    description: "Successful response",
+    content: { "application/json": { schema: { type: "object", properties: props, required } } },
+  },
+});
+const META_PROPS = {
+  country: { type: "string" }, region: { type: ["string", "null"] },
+  source: { type: "string" }, verifiedAt: { type: "string" }, disclaimer: { type: "string" },
+};
+
+app.get("/openapi.json", (_req, res) => {
+  res.json({
+    openapi: "3.1.0",
+    info: {
+      title: "Business Day & Deadline API",
+      version: "0.1.0",
+      description:
+        "Verified, always-current business-day arithmetic for ~200 countries incl. subdivisions (German Bundeslaender, US states) and correct per-country weekend rules (e.g. Fri/Sat in Egypt). " + DISCLAIMER,
+      "x-guidance":
+        "All endpoints are GET with query parameters and cost $0.001 via x402 (USDC on Base). Use /v1/check to test if a date is a business day, /v1/add to add or subtract N business days to a date (deadline calculation), /v1/between to count business days between two dates, /v1/next and /v1/previous to roll to the nearest business day. Dates are ISO YYYY-MM-DD, country is ISO 3166-1 alpha-2 (DE, US, JP), region is an optional ISO 3166-2 subdivision suffix (BY for Bavaria, CA for California). Every response carries verifiedAt and source for auditability. GET /v1/schema and GET /health are free.",
+      contact: { email: "paulos@voiceagenten.com" },
+    },
+    paths: {
+      "/v1/check": {
+        get: {
+          operationId: "checkBusinessDay",
+          summary: "Is a given date a business day in a country/region?",
+          tags: ["BusinessDays"],
+          "x-payment-info": PAYMENT_INFO,
+          parameters: [QP("date", "ISO date YYYY-MM-DD", true), P_COUNTRY, P_REGION, P_WEEKEND],
+          responses: {
+            ...ok({
+              date: { type: "string" }, isBusinessDay: { type: "boolean" },
+              reason: { type: ["string", "null"], enum: ["weekend", "holiday", null] },
+              holidayName: { type: ["string", "null"] }, ...META_PROPS,
+            }, ["date", "isBusinessDay"]),
+            ...R402,
+          },
+        },
+      },
+      "/v1/add": {
+        get: {
+          operationId: "addBusinessDays",
+          summary: "Add or subtract N business days to a date (deadline calculation)",
+          tags: ["BusinessDays"],
+          "x-payment-info": PAYMENT_INFO,
+          parameters: [
+            QP("start", "ISO start date YYYY-MM-DD", true),
+            QP("days", "Business days to add (negative = subtract)", true, "integer"),
+            P_COUNTRY, P_REGION, P_WEEKEND,
+          ],
+          responses: {
+            ...ok({
+              start: { type: "string" }, days: { type: "integer" },
+              resultDate: { type: "string" },
+              skipped: { type: "array", items: { type: "object" } }, ...META_PROPS,
+            }, ["resultDate"]),
+            ...R402,
+          },
+        },
+      },
+      "/v1/between": {
+        get: {
+          operationId: "businessDaysBetween",
+          summary: "Count business days between two dates (exclusive-from, inclusive-to)",
+          tags: ["BusinessDays"],
+          "x-payment-info": PAYMENT_INFO,
+          parameters: [
+            QP("from", "ISO date YYYY-MM-DD", true),
+            QP("to", "ISO date YYYY-MM-DD", true),
+            P_COUNTRY, P_REGION, P_WEEKEND,
+          ],
+          responses: {
+            ...ok({
+              businessDays: { type: "integer" }, calendarDays: { type: "integer" },
+              holidays: { type: "array", items: { type: "object" } }, ...META_PROPS,
+            }, ["businessDays"]),
+            ...R402,
+          },
+        },
+      },
+      "/v1/next": {
+        get: {
+          operationId: "nextBusinessDay",
+          summary: "Next business day after a date",
+          tags: ["BusinessDays"],
+          "x-payment-info": PAYMENT_INFO,
+          parameters: [QP("date", "ISO date YYYY-MM-DD", true), P_COUNTRY, P_REGION, P_WEEKEND],
+          responses: { ...ok({ nextBusinessDay: { type: "string" }, ...META_PROPS }, ["nextBusinessDay"]), ...R402 },
+        },
+      },
+      "/v1/previous": {
+        get: {
+          operationId: "previousBusinessDay",
+          summary: "Previous business day before a date",
+          tags: ["BusinessDays"],
+          "x-payment-info": PAYMENT_INFO,
+          parameters: [QP("date", "ISO date YYYY-MM-DD", true), P_COUNTRY, P_REGION, P_WEEKEND],
+          responses: { ...ok({ previousBusinessDay: { type: "string" }, ...META_PROPS }, ["previousBusinessDay"]), ...R402 },
+        },
+      },
+      "/health": {
+        get: {
+          operationId: "health",
+          summary: "Free health and data-freshness check",
+          responses: ok({ status: { type: "string" }, dataGeneratedAt: { type: "string" } }, ["status"]),
+        },
+      },
+    },
+  });
+});
+
 app.get("/v1/schema", (_req, res) => {
   res.json({
     openapi: "3.1.0",
